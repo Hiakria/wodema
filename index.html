@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设计师个人网站</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Sakura Shaders -->
+    <script id="sakura_point_vsh" type="x-shader/x_vertex">
+uniform mat4 uProjection;
+uniform mat4 uModelview;
+uniform vec3 uResolution;
+uniform vec3 uOffset;
+uniform vec3 uDOF;
+uniform vec3 uFade;
+
+attribute vec3 aPosition;
+attribute vec3 aEuler;
+attribute vec2 aMisc;
+
+varying vec3 pposition;
+varying float psize;
+varying float palpha;
+varying float pdist;
+
+varying vec3 normX;
+varying vec3 normY;
+varying vec3 normZ;
+varying vec3 normal;
+
+varying float diffuse;
+varying float specular;
+varying float rstop;
+varying float distancefade;
+
+void main(void) {
+    vec4 pos = uModelview * vec4(aPosition + uOffset, 1.0);
+    gl_Position = uProjection * pos;
+    gl_PointSize = aMisc.x * uProjection[1][1] / -pos.z * uResolution.y * 0.5;
+    
+    pposition = pos.xyz;
+    psize = aMisc.x;
+    pdist = length(pos.xyz);
+    palpha = smoothstep(0.0, 1.0, (pdist - 0.1) / uFade.z);
+    
+    vec3 elrsn = sin(aEuler);
+    vec3 elrcs = cos(aEuler);
+    mat3 rotx = mat3(
+        1.0, 0.0, 0.0,
+        0.0, elrcs.x, elrsn.x,
+        0.0, -elrsn.x, elrcs.x
+    );
+    mat3 roty = mat3(
+        elrcs.y, 0.0, -elrsn.y,
+        0.0, 1.0, 0.0,
+        elrsn.y, 0.0, elrcs.y
+    );
+    mat3 rotz = mat3(
+        elrcs.z, elrsn.z, 0.0, 
+        -elrsn.z, elrcs.z, 0.0,
+        0.0, 0.0, 1.0
+    );
+    mat3 rotmat = rotx * roty * rotz;
+    normal = rotmat[2];
+    
+    mat3 trrotm = mat3(
+        rotmat[0][0], rotmat[1][0], rotmat[2][0],
+        rotmat[0][1], rotmat[1][1], rotmat[2][1],
+        rotmat[0][2], rotmat[1][2], rotmat[2][2]
+    );
+    normX = trrotm[0];
+    normY = trrotm[1];
+    normZ = trrotm[2];
+    
+    const vec3 lit = vec3(0.5, 0.5, 0.3);
+    
+    float tmpdfs = dot(lit, normal);
+    if(tmpdfs < 0.0) {
+        normal = -normal;
+        tmpdfs = dot(lit, normal);
+    }
+    diffuse = 0.7 + tmpdfs * 0.5;
+    
+    vec3 eyev = normalize(-pos.xyz);
+    if(dot(eyev, normal) > 0.0) {
+        vec3 hv = normalize(eyev + lit);
+        specular = pow(max(dot(hv, normal), 0.0), 10.0) * 0.3;
+    }
+    else {
+        specular = 0.0;
+    }
+    
+    rstop = clamp((abs(pdist - uDOF.x) - uDOF.y) / uDOF.z, 0.0, 1.0);
+    rstop = pow(rstop, 0.5);
+    distancefade = min(1.0, exp((uFade.x - pdist) * 0.69315 / uFade.y));
+}
+</script>
+    <script id="sakura_point_fsh" type="x-shader/x_fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform vec3 uDOF;
+uniform vec3 uFade;
+
+varying vec3 pposition;
+varying float psize;
+varying float palpha;
+varying float pdist;
+
+varying vec3 normX;
+varying vec3 normY;
+varying vec3 normZ;
+varying vec3 normal;
+
+varying float diffuse;
+varying float specular;
+varying float rstop;
+varying float distancefade;
+
+float ellipse(vec2 p, vec2 o, vec2 r) {
+    vec2 lp = (p - o) / r;
+    return length(lp) - 1.0;
+}
+
+void main(void) {
+    vec3 p = vec3(gl_PointCoord - vec2(0.5, 0.5), 0.0) * 2.0;
+    vec3 d = vec3(0.0, 0.0, -1.0);
+    float nd = normZ.z;
+    if(abs(nd) < 0.0001) discard;
+    
+    float np = dot(normZ, p);
+    vec3 tp = p + d * np / nd;
+    vec2 coord = vec2(dot(normX, tp), dot(normY, tp));
+    
+    const float flwrsn = 0.258819045102521;
+    const float flwrcs = 0.965925826289068;
+    mat2 flwrm = mat2(flwrcs, -flwrsn, flwrsn, flwrcs);
+    vec2 flwrp = vec2(abs(coord.x), coord.y) * flwrm;
+    
+    float r;
+    if(flwrp.x < 0.0) {
+        r = ellipse(flwrp, vec2(0.065, 0.024) * 0.5, vec2(0.36, 0.96) * 0.5);
+    }
+    else {
+        r = ellipse(flwrp, vec2(0.065, 0.024) * 0.5, vec2(0.58, 0.96) * 0.5);
+    }
+    
+    if(r > rstop) discard;
+    
+    vec3 col = vec3(0.85, 0.55, 0.65);
+    col = col * (0.85 + diffuse * 0.25);
+    
+    float alpha = (rstop > 0.001)? (0.5 - r / (rstop * 2.0)) : 1.0;
+    alpha = smoothstep(0.0, 1.0, alpha) * palpha;
+    
+    gl_FragColor = vec4(col * alpha, alpha);
+}
+</script>
+    <script id="fx_common_vsh" type="x-shader/x_vertex">
+uniform vec3 uResolution;
+attribute vec2 aPosition;
+
+varying vec2 texCoord;
+varying vec2 screenCoord;
+
+void main(void) {
+    gl_Position = vec4(aPosition, 0.0, 1.0);
+    texCoord = aPosition.xy * 0.5 + vec2(0.5, 0.5);
+    screenCoord = aPosition.xy * vec2(uResolution.z, 1.0);
+}
+</script>
+    <script id="bg_fsh" type="x-shader/x_fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform vec2 uTimes;
+
+varying vec2 texCoord;
+varying vec2 screenCoord;
+
+void main(void) {
+    vec3 col;
+    float c;
+    vec2 tmpv = texCoord * vec2(0.8, 1.0) - vec2(0.95, 1.0);
+    c = exp(-pow(length(tmpv) * 1.8, 2.0));
+    col = mix(vec3(0.02, 0.0, 0.03), vec3(0.96, 0.98, 1.0) * 1.5, c);
+    gl_FragColor = vec4(col * 0.5, 1.0);
+}
+</script>
+    <script id="fx_brightbuf_fsh" type="x-shader/x_fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+uniform sampler2D uSrc;
+uniform vec2 uDelta;
+
+varying vec2 texCoord;
+varying vec2 screenCoord;
+
+void main(void) {
+    vec4 col = texture2D(uSrc, texCoord);
+    vec3 bright = max(vec3(0.0), col.rgb * 2.0 - vec3(0.8));
+    gl_FragColor = vec4(bright, 1.0);
+}
+</script>
+    <script id="fx_dirblur_r4_fsh" type="x-shader/x_fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+uniform sampler2D uSrc;
+uniform vec2 uDelta;
+uniform vec4 uBlurDir;
+
+varying vec2 texCoord;
+varying vec2 screenCoord;
+
+void main(void) {
+    vec4 col = texture2D(uSrc, texCoord);
+    col = col + texture2D(uSrc, texCoord + uBlurDir.xy * uDelta);
+    col = col + texture2D(uSrc, texCoord - uBlurDir.xy * uDelta);
+    col = col + texture2D(uSrc, texCoord + (uBlurDir.xy + uBlurDir.zw) * uDelta);
+    col = col + texture2D(uSrc, texCoord - (uBlurDir.xy + uBlurDir.zw) * uDelta);
+    gl_FragColor = col / 5.0;
+}
+</script>
+    <script id="fx_common_fsh" type="x-shader/x_fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+uniform sampler2D uSrc;
+uniform vec2 uDelta;
+
+varying vec2 texCoord;
+varying vec2 screenCoord;
+
+void main(void) {
+    gl_FragColor = texture2D(uSrc, texCoord);
+}
+</script>
+    <script id="pp_final_vsh" type="x-shader/x_vertex">
+uniform vec3 uResolution;
+attribute vec2 aPosition;
+varying vec2 texCoord;
+varying vec2 screenCoord;
+void main(void) {
+    gl_Position = vec4(aPosition, 0.0, 1.0);
+    texCoord = aPosition.xy * 0.5 + vec2(0.5, 0.5);
+    screenCoord = aPosition.xy * vec2(uResolution.z, 1.0);
+}
+</script>
+    <script id="pp_final_fsh" type="x-shader/x_fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+uniform sampler2D uSrc;
+uniform sampler2D uBloom;
+uniform vec2 uDelta;
+varying vec2 texCoord;
+varying vec2 screenCoord;
+void main(void) {
+    vec4 srccol = texture2D(uSrc, texCoord) * 2.0;
+    vec4 col;
+    col = srccol;
+    col *= smoothstep(1.0, 0.0, pow(length((texCoord - vec2(0.5)) * 2.0), 1.2) * 0.5);
+    col = pow(col, vec4(0.45454545454545));
+    
+    gl_FragColor = vec4(col.rgb, col.a);
+}
+</script>
+    
+    <script>
+        (function() {
+            var readyStateCheckInterval = setInterval(function() {
+                if (document.readyState === "interactive") {
+                    clearInterval(readyStateCheckInterval);
+                    
+                    document.querySelectorAll('.page').forEach(function(p) {
+                        p.classList.remove('active');
+                    });
+                    var homePage = document.getElementById('home');
+                    if (homePage) {
+                        homePage.classList.add('active');
+                    }
+                    
+                    document.querySelectorAll('.nav-link').forEach(function(l) {
+                        l.classList.remove('active');
+                    });
+                    var homeLink = document.querySelector('.nav-link[data-page="home"]');
+                    if (homeLink) {
+                        homeLink.classList.add('active');
+                    }
+                }
+            }, 10);
+        })();
+    </script>
+</head>
+<body>
+    <canvas id="sakura"></canvas>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <span class="logo-text">Designer</span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="#home" class="nav-link active" data-page="home">首页</a></li>
+                <li><a href="#about" class="nav-link" data-page="about">关于我</a></li>
+                <li><a href="#resume" class="nav-link" data-page="resume">个人简历</a></li>
+                <li><a href="#portfolio" class="nav-link" data-page="portfolio">个人作品</a></li>
+                <li><a href="#music" class="nav-link" data-page="music">音乐</a></li>
+                <li><a href="#contact" class="nav-link" data-page="contact">联系方式</a></li>
+            </ul>
+            <a href="#contact" class="nav-cta">联系咨询</a>
+            <button class="menu-toggle" id="menuToggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <div class="mobile-menu" id="mobileMenu">
+        <ul>
+            <li><a href="#home" class="mobile-nav-link" data-page="home">首页</a></li>
+            <li><a href="#about" class="mobile-nav-link" data-page="about">关于我</a></li>
+            <li><a href="#resume" class="mobile-nav-link" data-page="resume">个人简历</a></li>
+            <li><a href="#portfolio" class="mobile-nav-link" data-page="portfolio">个人作品</a></li>
+            <li><a href="#music" class="mobile-nav-link" data-page="music">音乐</a></li>
+            <li><a href="#contact" class="mobile-nav-link" data-page="contact">联系方式</a></li>
+        </ul>
+    </div>
+
+    <main>
+        <section id="home" class="page active">
+            <div class="hero-section">
+                <div class="hero-content">
+                    <h1 class="hero-title">设计师</h1>
+                    <p class="hero-subtitle">设计师 / 创作者 / UI设计</p>
+                    <div class="hero-buttons">
+                        <a href="#portfolio" class="btn btn-primary">查看作品</a>
+                        <a href="#contact" class="btn btn-secondary">联系咨询</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="skills-section">
+                <h2 class="section-title">我能做什么</h2>
+                <p class="section-subtitle">从体验到视觉一致性，输出可复用的设计资产</p>
+                <div class="skills-grid">
+                    <div class="skill-card">
+                        <div class="skill-icon">📱</div>
+                        <h3 class="skill-title">APP设计</h3>
+                        <p class="skill-desc">移动端/PC端界面、组件规范、交互细节与可用性优化。</p>
+                    </div>
+                    <div class="skill-card">
+                        <div class="skill-icon">🌐</div>
+                        <h3 class="skill-title">品牌官网</h3>
+                        <p class="skill-desc">企业品牌官网设计、全域视觉改版、提升品牌质感与转化率。</p>
+                    </div>
+                    <div class="skill-card">
+                        <div class="skill-icon">💼</div>
+                        <h3 class="skill-title">B端系统</h3>
+                        <p class="skill-desc">后台管理系统、数据可视化、操作流程优化与UI适配。</p>
+                    </div>
+                    <div class="skill-card">
+                        <div class="skill-icon">🎨</div>
+                        <h3 class="skill-title">品牌设计</h3>
+                        <p class="skill-desc">LOGO设计、VI系统搭建、物料设计与全场景调性统一。</p>
+                    </div>
+                    <div class="skill-card">
+                        <div class="skill-icon">🎮</div>
+                        <h3 class="skill-title">H5互动</h3>
+                        <p class="skill-desc">活动H5页面、游戏化互动设计、提升用户参与度与曝光。</p>
+                    </div>
+                    <div class="skill-card">
+                        <div class="skill-icon">🎬</div>
+                        <h3 class="skill-title">视频制作</h3>
+                        <p class="skill-desc">AI短视频、脚本策划、从生成到剪辑的全流程制作。</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="featured-works">
+                <h2 class="section-title">代表作品 / 精选项目</h2>
+                <div class="works-grid">
+                    <div class="work-card" data-page="portfolio">
+                        <div class="work-image">
+                            <div class="work-placeholder" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                <span class="work-number">01</span>
+                            </div>
+                        </div>
+                        <div class="work-overlay">
+                            <div class="work-info">
+                                <h3 class="work-title">校园生活服务综合APP</h3>
+                                <p class="work-desc">全链路UI设计 · 覆盖用户画像与深浅双模式适配</p>
+                                <div class="work-tags">
+                                    <span class="work-tag">APP</span>
+                                    <span class="work-tag">UI</span>
+                                    <span class="work-tag">深浅模式</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="work-card" data-page="portfolio">
+                        <div class="work-image">
+                            <div class="work-placeholder" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                <span class="work-number">02</span>
+                            </div>
+                        </div>
+                        <div class="work-overlay">
+                            <div class="work-info">
+                                <h3 class="work-title">企业品牌官网</h3>
+                                <p class="work-desc">全域视觉改版 · 餐饮品牌加盟官网设计升级</p>
+                                <div class="work-tags">
+                                    <span class="work-tag">官网</span>
+                                    <span class="work-tag">餐饮品牌</span>
+                                    <span class="work-tag">加盟</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="work-card" data-page="portfolio">
+                        <div class="work-image">
+                            <div class="work-placeholder" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                                <span class="work-number">03</span>
+                            </div>
+                        </div>
+                        <div class="work-overlay">
+                            <div class="work-info">
+                                <h3 class="work-title">B端后台管理系统</h3>
+                                <p class="work-desc">UI适配设计 · 连锁餐饮餐厅管理后台</p>
+                                <div class="work-tags">
+                                    <span class="work-tag">B端</span>
+                                    <span class="work-tag">后台系统</span>
+                                    <span class="work-tag">数据可视化</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="work-card" data-page="portfolio">
+                        <div class="work-image">
+                            <div class="work-placeholder" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                                <span class="work-number">04</span>
+                            </div>
+                        </div>
+                        <div class="work-overlay">
+                            <div class="work-info">
+                                <h3 class="work-title">连锁零食店品牌</h3>
+                                <p class="work-desc">全域视觉整合 · 从LOGO到全场景物料</p>
+                                <div class="work-tags">
+                                    <span class="work-tag">品牌设计</span>
+                                    <span class="work-tag">VI系统</span>
+                                    <span class="work-tag">物料设计</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="work-card" data-page="portfolio">
+                        <div class="work-image">
+                            <div class="work-placeholder" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                                <span class="work-number">05</span>
+                            </div>
+                        </div>
+                        <div class="work-overlay">
+                            <div class="work-info">
+                                <h3 class="work-title">游戏活动H5</h3>
+                                <p class="work-desc">互动视觉设计 · 提升用户参与度与品牌曝光</p>
+                                <div class="work-tags">
+                                    <span class="work-tag">H5</span>
+                                    <span class="work-tag">游戏活动</span>
+                                    <span class="work-tag">互动设计</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="work-card" data-page="portfolio">
+                        <div class="work-image">
+                            <div class="work-placeholder" style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);">
+                                <span class="work-number">06</span>
+                            </div>
+                        </div>
+                        <div class="work-overlay">
+                            <div class="work-info">
+                                <h3 class="work-title">AI短视频</h3>
+                                <p class="work-desc">全流程制作 · 脚本策划到后期剪辑一站式服务</p>
+                                <div class="work-tags">
+                                    <span class="work-tag">AI</span>
+                                    <span class="work-tag">短视频</span>
+                                    <span class="work-tag">内容制作</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <section id="about" class="page">
+            <div class="about-container">
+                <div class="about-left">
+                    <div class="about-image-card">
+                        <img src="images/ip头像.jpg" alt="个人形象">
+                    </div>
+                </div>
+                <div class="about-right">
+                    <div class="about-text-card">
+                        <h1 class="about-name">设计师</h1>
+                        <p class="about-title">设计师 / 创作者 / UI设计</p>
+                        
+                        <div class="about-content">
+                            <p class="about-paragraph">
+                                2019年接触设计领域，先后涉猎平面设计、UI设计、插画创作等多个方向，逐步形成独特的二次元风格。
+                            </p>
+                            
+                            <p class="about-paragraph">
+                                2020年开始在B站发布设计教程视频，累计播放量突破<span class="highlight">100万+</span>，帮助<span class="highlight">5000+</span>学员入门设计领域。
+                            </p>
+                            
+                            <p class="about-paragraph">
+                                2021年成立个人设计工作室，专注于品牌视觉设计、游戏UI、虚拟主播形象设计等领域，服务过<span class="highlight">200+</span>品牌客户。
+                            </p>
+                            
+                            <p class="about-paragraph">
+                                2023年开始从事设计教学工作，开设线上课程与线下工作坊，致力于培养新一代设计师人才，累计授课学员<span class="highlight">3000+</span>。
+                            </p>
+                            
+                            <p class="about-paragraph">
+                                个人原创作品曾获得多项设计奖项，并与多家知名游戏公司合作，参与多款热门游戏的视觉设计工作。
+                            </p>
+                        </div>
+                        
+                        <div class="about-skills">
+                            <span class="skill-tag">网页设计</span>
+                            <span class="skill-tag">B端设计</span>
+                            <span class="skill-tag">H5页面设计</span>
+                            <span class="skill-tag">AI漫剧制作</span>
+                            <span class="skill-tag">品牌全案设计</span>
+                            <span class="skill-tag">UI设计</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="resume" class="page">
+            <div class="resume-container">
+                <div class="resume-left">
+                    <div class="resume-avatar">
+                        <div class="avatar-placeholder" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 50%;"></div>
+                    </div>
+
+                    <div class="resume-module">
+                        <h3 class="module-title">基本信息</h3>
+                        <div class="module-content">
+                            <div class="info-grid">
+                                <div class="info-left">
+                                    <div class="info-item">姓名：</div>
+                                    <div class="info-item">毕业学校：</div>
+                                    <div class="info-item">年龄：</div>
+                                </div>
+                                <div class="info-right">
+                                    <div class="info-item">电话：</div>
+                                    <div class="info-item">邮箱：</div>
+                                    <div class="info-item">居住地：山东青岛</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="resume-module">
+                        <h3 class="module-title">教育背景</h3>
+                        <div class="module-content">
+                            <div class="edu-item">
+                                <div class="edu-time">2015-2019</div>
+                                <div class="edu-school">XX 设计学院</div>
+                                <div class="edu-major">视觉传达设计 学士</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="resume-module">
+                        <h3 class="module-title">技能证书</h3>
+                        <div class="module-content">
+                            <div class="cert-list">
+                                <div class="cert-item">Adobe Certified Professional</div>
+                                <div class="cert-item">视觉设计师认证</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="resume-module">
+                        <h3 class="module-title">自我评价</h3>
+                        <div class="module-content">
+                            <p class="self-eval">
+                                热爱设计，追求极致。善于沟通，注重细节。
+                                能够将客户需求与创意设计完美结合。
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="resume-module">
+                        <h3 class="module-title">个人能力</h3>
+                        <div class="module-content">
+                            <div class="skill-bar">
+                                <div class="skill-name">Photoshop</div>
+                                <div class="skill-progress">
+                                    <div class="skill-fill" style="width: 95%"></div>
+                                </div>
+                            </div>
+                            <div class="skill-bar">
+                                <div class="skill-name">Illustrator</div>
+                                <div class="skill-progress">
+                                    <div class="skill-fill" style="width: 90%"></div>
+                                </div>
+                            </div>
+                            <div class="skill-bar">
+                                <div class="skill-name">Figma</div>
+                                <div class="skill-progress">
+                                    <div class="skill-fill" style="width: 85%"></div>
+                                </div>
+                            </div>
+                            <div class="skill-bar">
+                                <div class="skill-name">Procreate</div>
+                                <div class="skill-progress">
+                                    <div class="skill-fill" style="width: 80%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="resume-right">
+                    <div class="resume-header">
+                        <h2 class="resume-main-title">个人简历 / Resume</h2>
+                        <p class="resume-objective">求职目标：高级 UI 设计师 / 设计总监</p>
+                    </div>
+
+                    <div class="resume-module-large">
+                        <h3 class="module-title-large">项目经验</h3>
+                        
+                        <div class="experience-card">
+                            <div class="experience-header">
+                                <div class="experience-time">2024</div>
+                                <div class="experience-company">个人设计工作室</div>
+                            </div>
+                            <div class="experience-content">
+                                <ul>
+                                    <li>成立个人设计工作室，专注于二次元风格设计服务</li>
+                                    <li>独立完成 30+ 品牌 VI 设计项目</li>
+                                    <li>开发设计课程，累计学员 200+</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="experience-card">
+                            <div class="experience-header">
+                                <div class="experience-time">2022-2024</div>
+                                <div class="experience-company">知名设计公司</div>
+                            </div>
+                            <div class="experience-content">
+                                <ul>
+                                    <li>带领 10 人设计团队，完成 50+ 大型项目</li>
+                                    <li>负责多个知名品牌的全案设计</li>
+                                    <li>获得行业设计奖</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="experience-card">
+                            <div class="experience-header">
+                                <div class="experience-time">2020-2022</div>
+                                <div class="experience-company">知名设计公司</div>
+                            </div>
+                            <div class="experience-content">
+                                <ul>
+                                    <li>服务多家知名品牌</li>
+                                    <li>参与多个大型项目的设计执行</li>
+                                    <li>积累丰富的商业设计经验</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="resume-module-large">
+                        <h3 class="module-title-large">工作经验</h3>
+                        
+                        <div class="experience-card">
+                            <div class="experience-header">
+                                <div class="experience-time">2019-2020</div>
+                                <div class="experience-company">设计公司</div>
+                            </div>
+                            <div class="experience-content">
+                                <ul>
+                                    <li>初级设计师，参与多个设计项目</li>
+                                    <li>学习并掌握商业设计流程</li>
+                                    <li>积累基础设计经验</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="portfolio" class="page">
+            <div class="portfolio-container">
+                <div class="portfolio-header">
+                    <h2 class="portfolio-title">个人作品</h2>
+                    <p class="portfolio-subtitle">6项全场景闭环实操：APP全链路、企业官网改版、B端后台、短视频制作、品牌全案、活动H5</p>
+                    <div class="portfolio-divider"></div>
+                </div>
+
+                <div class="portfolio-grid">
+                    <div class="portfolio-card">
+                        <div class="portfolio-preview">
+                            <div class="portfolio-placeholder" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                <span class="portfolio-number">01</span>
+                            </div>
+                            <div class="portfolio-overlay">
+                                <button class="download-btn">
+                                    <span>📥</span>
+                                    <span class="download-text">点击查看</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="portfolio-info">
+                            <h4 class="portfolio-item-title">校园生活服务综合APP · 全链路UI设计</h4>
+                            <p class="portfolio-item-desc">覆盖用户画像、竞品调研、图标体系与深浅双模式适配，打造一站式校园服务体验。</p>
+                            <div class="portfolio-tags">
+                                <span class="portfolio-tag">APP</span>
+                                <span class="portfolio-tag">UI</span>
+                                <span class="portfolio-tag">深浅模式</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="portfolio-card">
+                        <div class="portfolio-preview">
+                            <div class="portfolio-placeholder" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                <span class="portfolio-number">02</span>
+                            </div>
+                            <div class="portfolio-overlay">
+                                <button class="download-btn">
+                                    <span>📥</span>
+                                    <span class="download-text">点击查看</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="portfolio-info">
+                            <h4 class="portfolio-item-title">企业品牌官网 · 全域视觉改版</h4>
+                            <p class="portfolio-item-desc">为连锁餐饮品牌加盟官网打造视觉升级方案，提升品牌质感与转化率。</p>
+                            <div class="portfolio-tags">
+                                <span class="portfolio-tag">官网</span>
+                                <span class="portfolio-tag">餐饮品牌</span>
+                                <span class="portfolio-tag">加盟</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="portfolio-card">
+                        <div class="portfolio-preview">
+                            <div class="portfolio-placeholder" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                                <span class="portfolio-number">03</span>
+                            </div>
+                            <div class="portfolio-overlay">
+                                <button class="download-btn">
+                                    <span>📥</span>
+                                    <span class="download-text">点击查看</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="portfolio-info">
+                            <h4 class="portfolio-item-title">B端后台管理系统 · UI适配设计</h4>
+                            <p class="portfolio-item-desc">为连锁餐饮品牌打造餐厅管理后台，优化操作流程与数据可视化体验。</p>
+                            <div class="portfolio-tags">
+                                <span class="portfolio-tag">B端</span>
+                                <span class="portfolio-tag">后台系统</span>
+                                <span class="portfolio-tag">数据可视化</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="portfolio-card">
+                        <div class="portfolio-preview">
+                            <div class="portfolio-placeholder" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                                <span class="portfolio-number">04</span>
+                            </div>
+                            <div class="portfolio-overlay">
+                                <button class="download-btn">
+                                    <span>📥</span>
+                                    <span class="download-text">点击查看</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="portfolio-info">
+                            <h4 class="portfolio-item-title">连锁零食店品牌 · 全域视觉整合</h4>
+                            <p class="portfolio-item-desc">从LOGO、字体、色彩到门店/外卖/社群物料，统一全场景品牌调性。</p>
+                            <div class="portfolio-tags">
+                                <span class="portfolio-tag">品牌设计</span>
+                                <span class="portfolio-tag">VI系统</span>
+                                <span class="portfolio-tag">物料设计</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="portfolio-card">
+                        <div class="portfolio-preview">
+                            <div class="portfolio-placeholder" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                                <span class="portfolio-number">05</span>
+                            </div>
+                            <div class="portfolio-overlay">
+                                <button class="download-btn">
+                                    <span>📥</span>
+                                    <span class="download-text">点击查看</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="portfolio-info">
+                            <h4 class="portfolio-item-title">游戏活动H5 · 互动视觉设计</h4>
+                            <p class="portfolio-item-desc">结合游戏玩法设计互动H5页面，提升用户参与度与品牌曝光。</p>
+                            <div class="portfolio-tags">
+                                <span class="portfolio-tag">H5</span>
+                                <span class="portfolio-tag">游戏活动</span>
+                                <span class="portfolio-tag">互动设计</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="portfolio-card">
+                        <div class="portfolio-preview">
+                            <div class="portfolio-placeholder" style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);">
+                                <span class="portfolio-number">06</span>
+                            </div>
+                            <div class="portfolio-overlay">
+                                <button class="download-btn">
+                                    <span>📥</span>
+                                    <span class="download-text">点击查看</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="portfolio-info">
+                            <h4 class="portfolio-item-title">AI短视频 · 全流程制作</h4>
+                            <p class="portfolio-item-desc">从脚本策划、AI生成到后期剪辑，一站式短视频内容制作服务。</p>
+                            <div class="portfolio-tags">
+                                <span class="portfolio-tag">AI</span>
+                                <span class="portfolio-tag">短视频</span>
+                                <span class="portfolio-tag">内容制作</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section id="contact" class="page">
+            <div class="contact-container">
+                <div class="contact-header">
+                    <h2 class="contact-title">联系我</h2>
+                    <p class="contact-subtitle">有任何问题或合作意向？欢迎随时联系</p>
+                </div>
+
+                <div class="social-module">
+                    <h3 class="contact-module-title">社交媒体</h3>
+                    <div class="social-card">
+                        <p class="social-text">关注我的社交媒体，获取最新动态</p>
+                        <div class="social-buttons">
+                            <a href="https://space.bilibili.com/344922054?spm_id_from=333.1007.0.0" target="_blank" rel="noopener noreferrer" class="social-btn bilibili">B 站</a>
+                            <a href="#" class="social-btn xiaohongshu">小红书</a>
+                            <a href="#" class="social-btn douyin">抖音</a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="contact-method-module">
+                    <h3 class="contact-module-title">微信联系</h3>
+                    <div class="contact-method-card">
+                        <div class="contact-method-content">
+                            <div class="method-icon-text">
+                                <img src="images/微信2.png" alt="微信" class="method-icon-img">
+                                <span class="method-guide">联系咨询请添加微信</span>
+                            </div>
+                            <div class="method-contact">hxd114514dnmd</div>
+                            <div class="method-qr">
+                                <div class="qr-code">
+                                    <img src="images/微信.jpg" alt="微信二维码">
+                                </div>
+                                <p class="qr-note">添加时请备注来意，将在 24 小时内回复</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="contact-method-module">
+                    <h3 class="contact-module-title">QQ 联系</h3>
+                    <div class="contact-method-card">
+                        <div class="contact-method-content">
+                            <div class="method-icon-text">
+                                <img src="images/qq2.png" alt="QQ" class="method-icon-img">
+                                <span class="method-guide">联系咨询请添加 QQ</span>
+                            </div>
+                            <div class="method-contact">2429057821</div>
+                            <div class="method-qr">
+                                <div class="qr-code">
+                                    <img src="images/QQ.jpg" alt="QQ 二维码">
+                                </div>
+                                <p class="qr-note">添加时请备注来意，将在 24 小时内回复</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="contact-method-module">
+                    <h3 class="contact-module-title">邮箱联系</h3>
+                    <div class="contact-method-card contact-email-card">
+                        <div class="contact-method-content">
+                            <div class="method-icon-text">
+                                <span class="method-icon">📧</span>
+                                <span class="method-guide">发送邮件至以下邮箱</span>
+                            </div>
+                            <div class="method-contact method-email">17737942059@163.com</div>
+                            <a href="https://mail.163.com/js6/main.jsp?sid=CNCFDuJKmxdioIVweWeeKyMvhxsIZohj&df=email163#module=compose.ComposeModule%7C%7B%22type%22%3A%22compose%22%2C%22fullScreen%22%3Atrue%2C%22cid%22%3A%22c%3A1779274221896%22%7D" class="email-btn" target="_blank">发送邮件</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="music" class="page">
+            <div class="music-container">
+                <div class="music-header">
+                    <h2 class="section-title">云端乐律</h2>
+                    <p class="section-subtitle">在代码的缝隙中寻找灵魂的共鸣</p>
+                </div>
+                
+                <div class="music-player">
+                    <div class="player-left">
+                        <div class="album-cover">
+                            <div class="cd-container">
+                                <div class="cd">
+                                    <div class="cd-artwork"></div>
+                                    <div class="cd-center"></div>
+                                </div>
+                            </div>
+                            <div class="song-info">
+                                <h3 class="song-title">嘉宾</h3>
+                                <p class="song-artist">管智超</p>
+                            </div>
+                            <audio id="audioPlayer" src="images/嘉宾.mp3" preload="metadata"></audio>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                                <div class="progress-time">
+                                    <span id="currentTime">0:00</span>
+                                    <span id="duration">0:00</span>
+                                </div>
+                            </div>
+                            <div class="player-controls">
+                                <button class="control-btn shuffle">🔀</button>
+                                <button class="control-btn prev">⏮</button>
+                                <button class="control-btn play" id="playBtn">▶</button>
+                                <button class="control-btn next">⏭</button>
+                                <button class="control-btn repeat">🔁</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="player-right">
+                        <div class="playlist-tabs">
+                            <button class="tab-btn active" data-tab="playlist">歌单</button>
+                            <button class="tab-btn" data-tab="lyrics">歌词</button>
+                        </div>
+                        
+                        <div class="tab-content">
+                            <div class="tab-pane active" id="tab-playlist">
+                                <div class="playlist">
+                                    <div class="playlist-item active" data-audio="images/嘉宾.mp3">
+                                        <span class="track-number">1</span>
+                                        <div class="track-info">
+                                            <span class="track-title">嘉宾</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                    <div class="playlist-item" data-audio="images/可我不是他mp3.mp3">
+                                        <span class="track-number">2</span>
+                                        <div class="track-info">
+                                            <span class="track-title">可我不是他</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                    <div class="playlist-item" data-audio="images/春雷.mp3">
+                                        <span class="track-number">3</span>
+                                        <div class="track-info">
+                                            <span class="track-title">春雷</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                    <div class="playlist-item" data-audio="images/猛独が襲.mp3">
+                                        <span class="track-number">4</span>
+                                        <div class="track-info">
+                                            <span class="track-title">猛独が襲</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                    <div class="playlist-item" data-audio="images/酔いどれ知らず.mp3">
+                                        <span class="track-number">5</span>
+                                        <div class="track-info">
+                                            <span class="track-title">酔いどれ知らず</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                    <div class="playlist-item" data-audio="images/レイメイ.mp3">
+                                        <span class="track-number">6</span>
+                                        <div class="track-info">
+                                            <span class="track-title">レイメイ</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                    <div class="playlist-item" data-audio="images/乙女解剖.mp3">
+                                        <span class="track-number">7</span>
+                                        <div class="track-info">
+                                            <span class="track-title">乙女解剖</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                    <div class="playlist-item" data-audio="images/光顾.mp3">
+                                        <span class="track-number">8</span>
+                                        <div class="track-info">
+                                            <span class="track-title">光顾</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                    <div class="playlist-item" data-audio="images/晚安关系.mp3">
+                                        <span class="track-number">9</span>
+                                        <div class="track-info">
+                                            <span class="track-title">晚安关系</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                    <div class="playlist-item" data-audio="images/晴书.mp3">
+                                        <span class="track-number">10</span>
+                                        <div class="track-info">
+                                            <span class="track-title">晴书</span>
+                                            <span class="track-artist">管智超</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="tab-pane" id="tab-lyrics">
+                                <div class="lyrics-content" id="lyricsContent">
+                                    <div class="lyric-line">嘉宾</div>
+                                    <div class="lyric-line">管智超</div>
+                                    <div class="lyric-line" data-time="15">分手后第几个冬季</div>
+                                    <div class="lyric-line" data-time="19">今天是星期几</div>
+                                    <div class="lyric-line" data-time="22">偶尔会想起你</div>
+                                    <div class="lyric-line" data-time="26">你突如其来的简讯</div>
+                                    <div class="lyric-line" data-time="31">让我措手不及</div>
+                                    <div class="lyric-line" data-time="35">愣住站在原地</div>
+                                    <div class="lyric-line" data-time="39">当所有人都替你开心</div>
+                                    <div class="lyric-line" data-time="44">我却才傻傻清醒</div>
+                                    <div class="lyric-line" data-time="46">原来早已有人为你订做了嫁衣</div>
+                                    <div class="lyric-line" data-time="51">感谢你特别邀请</div>
+                                    <div class="lyric-line" data-time="55">来见证你的爱情</div>
+                                    <div class="lyric-line" data-time="58">我时刻提醒自己 别逃避</div>
+                                    <div class="lyric-line" data-time="64">拿着喜帖一步一步走近</div>
+                                    <div class="lyric-line" data-time="68">他精心布置的场地</div>
+                                    <div class="lyric-line" data-time="71">可惜这是属于你的风景</div>
+                                    <div class="lyric-line" data-time="75">而我只是嘉宾</div>
+                                    <div class="lyric-line" data-time="77">我放下所有回忆</div>
+                                    <div class="lyric-line" data-time="80">来成全你的爱情</div>
+                                    <div class="lyric-line" data-time="83">却始终不愿相信 这是命</div>
+                                    <div class="lyric-line" data-time="89">好久不见的你有点疏离</div>
+                                    <div class="lyric-line" data-time="93">握手寒暄如此客气</div>
+                                    <div class="lyric-line" data-time="97">何必要在他的面前刻意</div>
+                                    <div class="lyric-line" data-time="100">隐瞒我的世界 有过你</div>
+                                    <div class="lyric-line" data-time="115">不知不觉钟声响起</div>
+                                    <div class="lyric-line" data-time="121">你守候在原地</div>
+                                    <div class="lyric-line" data-time="124">等待着他靠近</div>
+                                    <div class="lyric-line" data-time="128">温柔的他单膝跪地</div>
+                                    <div class="lyric-line" data-time="134">钻戒缓缓戴进</div>
+                                    <div class="lyric-line" data-time="137">你的无名指里</div>
+                                    <div class="lyric-line" data-time="141">当所有人都替你开心</div>
+                                    <div class="lyric-line" data-time="146">我却才傻傻清醒</div>
+                                    <div class="lyric-line" data-time="148">原来我们之间已没有任何关系</div>
+                                    <div class="lyric-line" data-time="154">感谢你特别邀请</div>
+                                    <div class="lyric-line" data-time="157">来见证你的爱情</div>
+                                    <div class="lyric-line" data-time="166">我时刻提醒自己 别逃避</div>
+                                    <div class="lyric-line" data-time="170">今天你妆扮得格外美丽</div>
+                                    <div class="lyric-line" data-time="173">这美也曾拥在怀里</div>
+                                    <div class="lyric-line" data-time="177">可惜这是你和他的婚礼</div>
+                                    <div class="lyric-line" data-time="180">而我只是嘉宾</div>
+                                    <div class="lyric-line" data-time="183">我放下所有回忆</div>
+                                    <div class="lyric-line" data-time="186">来成全你的爱情</div>
+                                    <div class="lyric-line" data-time="191">却始终不愿相信 这是命</div>
+                                    <div class="lyric-line" data-time="195">说好的永远变成了曾经</div>
+                                    <div class="lyric-line" data-time="199">我试着衷心祝福你</div>
+                                    <div class="lyric-line" data-time="202">请原谅我不体面没出息</div>
+                                    <div class="lyric-line" data-time="209">选择失陪一下 先离席</div>
+                                    <div class="lyric-line" data-time="213">又不是偶像剧</div>
+                                    <div class="lyric-line" data-time="218">怎么我演得那么入戏</div>
+                                    <div class="lyric-line" data-time="224">这不堪入目的剧情</div>
+                                    <div class="lyric-line" data-time="227">感谢你特别邀请</div>
+                                    <div class="lyric-line" data-time="231">观赏你要的爱情</div>
+                                    <div class="lyric-line" data-time="236">嘉宾也许是另一种宿命</div>
+                                    <div class="lyric-line" data-time="240">离开你的自己事到如今</div>
+                                    <div class="lyric-line" data-time="244">还有什么资格关心</div>
+                                    <div class="lyric-line" data-time="248">毕竟终成眷属的人是你</div>
+                                    <div class="lyric-line" data-time="250">而我只是嘉宾</div>
+                                    <div class="lyric-line" data-time="253">我流尽所有回忆</div>
+                                    <div class="lyric-line" data-time="256">来庆祝你的婚礼</div>
+                                    <div class="lyric-line" data-time="262">却始终没有勇气 祝福你</div>
+                                    <div class="lyric-line" data-time="266">谢谢你送给我最后清醒</div>
+                                    <div class="lyric-line" data-time="272">把自己还给我自己</div>
+                                    <div class="lyric-line" data-time="277">至少我还能够成为那个</div>
+                                    <div class="lyric-line" data-time="282">见证你们爱情的嘉宾</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="page-footer">
+            <div class="footer-content">
+                <div class="footer-logo">
+                    <span class="logo-main">设计师</span>
+                    <span class="logo-sub">Designer</span>
+                </div>
+                <div class="footer-links">
+                    <a href="#" class="footer-link">网易云音乐</a>
+                    <span class="link-divider">|</span>
+                    <a href="https://space.bilibili.com/344922054?spm_id_from=333.1007.0.0" target="_blank" rel="noopener noreferrer" class="footer-link">哔哩哔哩</a>
+                </div>
+            </div>
+        </footer>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var targetPageId = window.location.hash.substring(1) || 'home';
+            
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            var targetPage = document.getElementById(targetPageId);
+            if (targetPage) {
+                targetPage.classList.add('active');
+            } else {
+                document.getElementById('home').classList.add('active');
+                targetPageId = 'home';
+            }
+            
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            var targetLink = document.querySelector('.nav-link[data-page="' + targetPageId + '"]');
+            if (targetLink) {
+                targetLink.classList.add('active');
+            }
+        });
+    </script>
+    <script src="sakura.js"></script>
+    <script src="script.js?v=20260521"></script>
+</body>
+</html>

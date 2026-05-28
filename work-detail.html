@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作品详情 - 设计师</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <span class="logo-text">Designer</span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="index.html#home" class="nav-link">首页</a></li>
+                <li><a href="index.html#about" class="nav-link">关于我</a></li>
+                <li><a href="index.html#resume" class="nav-link">个人简历</a></li>
+                <li><a href="index.html#portfolio" class="nav-link active">个人作品</a></li>
+                <li><a href="index.html#contact" class="nav-link">联系方式</a></li>
+            </ul>
+            <a href="index.html#contact" class="nav-cta">联系咨询</a>
+            <button class="menu-toggle" id="menuToggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <div class="mobile-menu" id="mobileMenu">
+        <ul>
+            <li><a href="index.html#home" class="mobile-nav-link">首页</a></li>
+            <li><a href="index.html#about" class="mobile-nav-link">关于我</a></li>
+            <li><a href="index.html#resume" class="mobile-nav-link">个人简历</a></li>
+            <li><a href="index.html#portfolio" class="mobile-nav-link">个人作品</a></li>
+            <li><a href="index.html#contact" class="mobile-nav-link">联系方式</a></li>
+        </ul>
+    </div>
+
+    <main>
+        <section id="work-detail" class="page active">
+            <div class="detail-container">
+                <button class="back-btn" onclick="goBack()">← 返回作品列表</button>
+                
+                <div class="detail-header">
+                    <div class="detail-hero">
+                        <div class="detail-image" id="detailImage"></div>
+                    </div>
+                    <div class="detail-info">
+                        <h1 class="detail-title" id="detailTitle">作品标题</h1>
+                        <p class="detail-category" id="detailCategory">分类</p>
+                        <p class="detail-desc" id="detailDesc">作品描述...</p>
+                    </div>
+                </div>
+
+                <div class="detail-content">
+                    <h2>项目介绍</h2>
+                    <p id="detailIntro">这是一个精彩的设计项目，展示了我的专业能力和创意设计理念。</p>
+                    
+                    <h2>设计亮点</h2>
+                    <ul id="detailHighlights">
+                        <li>创新的视觉设计</li>
+                        <li>用户体验优化</li>
+                        <li>响应式设计</li>
+                        <li>品牌一致性</li>
+                    </ul>
+
+                    <h2>技术栈</h2>
+                    <div class="tech-tags" id="detailTech">
+                        <span class="tech-tag">UI设计</span>
+                        <span class="tech-tag">品牌设计</span>
+                        <span class="tech-tag">Figma</span>
+                    </div>
+                </div>
+
+                <div class="detail-nav">
+                    <button class="nav-btn prev-btn" id="prevBtn" onclick="navigateWork(-1)">上一个作品</button>
+                    <button class="nav-btn next-btn" id="nextBtn" onclick="navigateWork(1)">下一个作品</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="page-footer">
+        <div class="footer-content">
+            <div class="footer-logo">
+                <span class="logo-main">设计师</span>
+                <span class="logo-sub">Designer</span>
+            </div>
+            <div class="footer-links">
+                <a href="#" class="footer-link">网易云音乐</a>
+                <span class="link-divider">|</span>
+                <a href="https://space.bilibili.com/344922054?spm_id_from=333.1007.0.0" target="_blank" rel="noopener noreferrer" class="footer-link">哔哩哔哩</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const works = [
+            {
+                id: 1,
+                title: '校园生活服务综合APP · 全链路UI设计',
+                category: 'APP设计',
+                desc: '覆盖用户画像、竞品调研、图标体系与深浅双模式适配，打造一站式校园服务体验。',
+                intro: '为校园生活服务场景打造的综合APP，从用户研究到界面设计全链路把控。包含校园社交、二手交易、课程表、校园导航等核心功能模块，通过用户画像分析与竞品调研，构建完整的设计体系，支持深浅双模式切换，提供沉浸式校园服务体验。',
+                highlights: ['用户画像分析', '竞品调研分析', '图标体系设计', '深浅双模式适配', '交互原型设计', '组件库搭建'],
+                tech: ['APP设计', 'UI设计', '用户研究', '交互设计', 'Figma', '组件库']
+            },
+            {
+                id: 2,
+                title: '企业品牌官网 · 全域视觉改版',
+                category: '官网设计',
+                desc: '为连锁餐饮品牌加盟官网打造视觉升级方案，提升品牌质感与转化率。',
+                intro: '针对连锁餐饮品牌加盟官网进行全方位视觉改版，从品牌定位出发，重塑视觉识别系统，优化用户体验流程，提升招商转化效率。包含品牌故事、产品展示、加盟流程、门店案例等核心板块，打造专业可信的品牌形象。',
+                highlights: ['品牌视觉升级', '响应式设计', '转化优化', '移动端适配', 'SEO优化', '动效设计'],
+                tech: ['网页设计', '品牌设计', '响应式', 'UI/UX', '动效设计', '前端开发']
+            },
+            {
+                id: 3,
+                title: 'B端后台管理系统 · UI适配设计',
+                category: 'B端设计',
+                desc: '为连锁餐饮品牌打造餐厅管理后台，优化操作流程与数据可视化体验。',
+                intro: '为连锁餐饮品牌量身定制的后台管理系统，涵盖门店管理、订单管理、库存管理、员工管理、数据报表等核心模块。通过优化操作流程与数据可视化设计，大幅提升管理人员工作效率，支持多端适配与权限分级管理。',
+                highlights: ['数据可视化', '操作流程优化', '权限管理', '多端适配', '性能优化', '仪表盘设计'],
+                tech: ['B端设计', '后台系统', '数据可视化', 'UI适配', '交互设计', 'Figma']
+            },
+            {
+                id: 4,
+                title: '连锁零食店品牌 · 全域视觉整合',
+                category: '品牌设计',
+                desc: '从LOGO、字体、色彩到门店/外卖/社群物料，统一全场景品牌调性。',
+                intro: '为连锁零食品牌提供完整的品牌视觉整合方案，从品牌战略定位出发，构建系统化的视觉识别体系。涵盖LOGO设计、标准字体、色彩系统、图形元素，以及门店空间视觉、外卖包装、社群运营物料等全场景应用，实现品牌调性的高度统一。',
+                highlights: ['LOGO设计', 'VI系统搭建', '门店物料设计', '外卖包装设计', '社群运营物料', '品牌手册'],
+                tech: ['品牌设计', 'VI系统', '包装设计', '物料设计', '色彩系统', '版式设计']
+            },
+            {
+                id: 5,
+                title: '游戏活动H5 · 互动视觉设计',
+                category: 'H5设计',
+                desc: '结合游戏玩法设计互动H5页面，提升用户参与度与品牌曝光。',
+                intro: '创意互动H5页面设计，结合游戏化玩法打造沉浸式用户体验。通过趣味互动、任务激励、社交分享等设计手法，提升用户参与度与品牌曝光率。支持多端适配，优化加载性能，确保流畅的交互体验。',
+                highlights: ['游戏化互动', '视觉动效设计', '社交分享', '数据追踪', '用户激励', '活动运营'],
+                tech: ['H5设计', '游戏活动', '动效设计', '交互设计', '微信生态', '性能优化']
+            },
+            {
+                id: 6,
+                title: 'AI短视频 · 全流程制作',
+                category: '视频制作',
+                desc: '从脚本策划、AI生成到后期剪辑，一站式短视频内容制作服务。',
+                intro: '一站式短视频内容制作服务，结合AI技术提升创作效率。涵盖脚本策划、场景设计、AI生成、后期剪辑、特效包装全流程。为品牌提供高质量、高效率的短视频内容解决方案，适配抖音、快手、小红书等多平台发布需求。',
+                highlights: ['脚本策划', 'AI生成', '后期剪辑', '特效制作', '内容运营', '多平台适配'],
+                tech: ['AI生成', '短视频', '内容制作', '剪辑', '特效', '品牌传播']
+            }
+        ];
+
+        const colors = [
+            'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+            'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+            'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+            'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+            'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)'
+        ];
+
+        function getWorkById(id) {
+            return works.find(w => w.id === parseInt(id));
+        }
+
+        function getCurrentWorkIndex() {
+            const params = new URLSearchParams(window.location.search);
+            const id = parseInt(params.get('id')) || 1;
+            return works.findIndex(w => w.id === id);
+        }
+
+        function loadWork(id) {
+            const work = getWorkById(id);
+            if (!work) return;
+
+            document.getElementById('detailTitle').textContent = work.title;
+            document.getElementById('detailCategory').textContent = work.category;
+            document.getElementById('detailDesc').textContent = work.desc;
+            document.getElementById('detailIntro').textContent = work.intro;
+            
+            const highlights = document.getElementById('detailHighlights');
+            highlights.innerHTML = work.highlights.map(h => `<li>${h}</li>`).join('');
+            
+            const techTags = document.getElementById('detailTech');
+            techTags.innerHTML = work.tech.map(t => `<span class="tech-tag">${t}</span>`).join('');
+
+            const index = works.findIndex(w => w.id === id);
+            document.getElementById('detailImage').style.background = colors[index];
+
+            document.getElementById('prevBtn').style.display = index > 0 ? 'block' : 'none';
+            document.getElementById('nextBtn').style.display = index < works.length - 1 ? 'block' : 'none';
+        }
+
+        function navigateWork(direction) {
+            const currentIndex = getCurrentWorkIndex();
+            const newIndex = currentIndex + direction;
+            if (newIndex >= 0 && newIndex < works.length) {
+                window.location.href = `work-detail.html?id=${works[newIndex].id}`;
+            }
+        }
+
+        function goBack() {
+            window.location.href = 'index.html#portfolio';
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const params = new URLSearchParams(window.location.search);
+            const id = params.get('id') || 1;
+            loadWork(id);
+
+            const menuToggle = document.getElementById('menuToggle');
+            const mobileMenu = document.getElementById('mobileMenu');
+
+            menuToggle.addEventListener('click', function() {
+                mobileMenu.classList.toggle('active');
+                menuToggle.classList.toggle('active');
+            });
+        });
+    </script>
+</body>
+</html>
